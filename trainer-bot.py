@@ -8,7 +8,7 @@ import logging
 import logger_config
 
 # Импортируем нашу логику и БД
-from db_mock import save_user_stats
+from db import save_user_stats
 from mas_graph import AgentState, route_intent, grader_agent, instructor_agent, examiner_agent_workflow
 from config import settings
 from messages import MESSAGES
@@ -22,7 +22,7 @@ bot = Bot(
 )
 router = Router()
 
-# Временное хранилище "текущего вопроса" (в реальном проекте - Redis или БД)
+# Временное хранилище "текущего вопроса" (в будущем - Redis или БД)
 user_sessions = {}
 
 @router.message(Command("start", "help"))
@@ -39,6 +39,7 @@ async def cmd_start(message: types.Message):
         user_input="help", 
         intent="", 
         current_topic=None, 
+        last_topic=None,
         correct_answer=None, 
         bot_response="")
     state = instructor_agent(state)
@@ -60,6 +61,7 @@ async def cmd_test(message: types.Message):
         user_input="START_TEST_COMMAND", # Сигнал для роутера
         intent="test",
         current_topic=None,
+        last_topic=user_sessions.get(user_id, {}).get("current_topic"),
         correct_answer=None,
         bot_response=""
     )
@@ -89,8 +91,10 @@ async def handle_message(message: types.Message):
         user_input=message.text,
         intent="",
         current_topic=user_sessions.get(user_id, {}).get("current_topic"),
+        last_topic=user_sessions.get(user_id, {}).get("current_topic"),
         correct_answer=user_sessions.get(user_id, {}).get("correct_answer"),
-        bot_response=""
+        bot_response="",
+        is_success=False
     )
 
     # 1. Роутер определяет намерение
@@ -114,12 +118,7 @@ async def handle_message(message: types.Message):
             # Зовем Проверяющего
             state = await loop.run_in_executor(None, grader_agent, state)
             
-            # (Опционально) Анализатор оценивает успех по ответу LLM и пишет в БД
-            is_success = "correct" in state["bot_response"].lower() or "правильно" in state["bot_response"].lower()
-            await save_user_stats(user_id, state["current_topic"], is_success)
-            
-            # Очищаем сессию после ответа
-            user_sessions.pop(user_id, None)
+            await save_user_stats(user_id, state["current_topic"], state["is_success"])
     else:
         state["bot_response"] = MESSAGES.get(lang, MESSAGES["en"])["unknown"]
 

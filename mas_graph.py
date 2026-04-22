@@ -9,9 +9,10 @@ from langchain_core.prompts import ChatPromptTemplate
 from langchain_core.messages import SystemMessage, HumanMessage
 
 from config import settings
-from db_mock import get_user_weakest_topic, get_question_from_db
+from db import get_user_weakest_topic, get_question_from_db
+from logic import check_sanskrit_answer
 from messages import MESSAGES
-from transliteration import normalize_to_slp1
+from transliteration import normalize_to_slp1, slp_to_deva_iast
 
 logger = logging.getLogger("SanskritMAS.Graph")
 logger.propagate = True
@@ -23,7 +24,7 @@ llm = ChatOpenAI(
     openai_api_base=settings.OPENROUTER_URL,
 )
 
-# Состояние графа (добавляем 'detected_language')
+# Состояние графа 
 class AgentState(TypedDict):
     user_id: int
     tg_language: str        # Язык из Telegram (например, 'ru' или 'en') - наш запасной план
@@ -31,8 +32,10 @@ class AgentState(TypedDict):
     user_input: str
     intent: str             # 'test', 'answer', 'help'
     current_topic: Optional[str]
+    last_topic: Optional[str]
     correct_answer: Optional[str]
     bot_response: str
+    is_success: bool
 
 def route_intent(state: AgentState) -> AgentState:
     """Агент-Роутер: определяет намерение и язык."""
@@ -94,29 +97,41 @@ def grader_agent(state: AgentState) -> AgentState:
 
     logger.info(f"   ∟ Ввод пользователя нормализован к SLP1: '{user_input_slp1}'")
 
-    correct_slp1 = state["correct_answer"].strip()
+    correct_slp1 = " ".join(state["correct_answer"]).strip()
+    logger.info(f"   ∟ Ответ в SLP1: '{correct_slp1}'")
 
-    is_perfect = user_input_slp1 == correct_slp1
+    correct_for_user = " ".join([slp_to_deva_iast(ans) for ans in state["correct_answer"]])
+
+    is_perfect = True if user_input_slp1 == correct_slp1 else check_sanskrit_answer(user_input_slp1, state["correct_answer"])
     logger.info(f"   ∟ Сравнение: {'✅ СОВПАЛО' if is_perfect else '❌ ОШИБКА'}")
     
     # Теперь мы динамически передаем язык, на котором нужно ответить
     target_lang = "Russian" if state["detected_language"] == "ru" else "English"
-    
-    system_text = f"""You are a strict but supportive Sanskrit tutor. 
-        IMPORTANT: You MUST respond entirely in {target_lang}.
-        
-        EVALUATION RULES:
-            1. If the Student's SLP1 matches the Correct SLP1 exactly:
-            - Confirm it is 100% correct.
-            - Congratulate them briefly.
-            2. If there is a mistake:
-            - Explicitly state that the answer is incorrect.
-            - Provide the CORRECT version in SLP1 or Devanagari.
-            - Point out exactly where the mistake is (e.g., "In 2nd person dual, it should be X instead of Y").
-            
-            Don't be vague. Be precise."""
 
-    human_text = f"Exact Match: {is_perfect}\nStudent Answer (SLP1): {user_input_slp1}\nCorrect Answer (SLP1): {correct_slp1}"
+    if is_perfect:
+        system_text = f"""
+                You are a supportive Sanskrit tutor. IMPORTANT: You MUST respond entirely in {target_lang}. 
+                The student is CORRECT. 
+                Just congratulate them briefly and encourage them.
+                Don't be vague. Be precise.
+                """
+        human_text = "Status: SUCCESS"
+    else:
+        system_text = f"""You are a strict but helpful Sanskrit tutor. Respond in {target_lang}. 
+                The student is WRONG. 
+                Your task is to:
+                1. Say the answer is incorrect.
+                2. Provide this correct version: {correct_for_user}
+                3. If it's a verb, remind about periphrastic forms (one word). 
+                    - For conjugation (periphrastic forms): Remind that forms ending in -ām must be ONE word (e.g., 'īkṣāñcakre').
+                
+                DO NOT try to analyze the student's answer. 
+                DO NOT explain why it's wrong or right. 
+
+                Do not explain your reasoning. Just provide the feedback.
+                Don't be vague. Be precise.
+                """
+        human_text = "Status: FAILURE"
 
     messages = [
         SystemMessage(content=system_text),
@@ -126,6 +141,7 @@ def grader_agent(state: AgentState) -> AgentState:
     response = llm.invoke(messages)
 
     state["bot_response"] = response.content
+    state["is_success"] = is_perfect
     
     logger.info("   ∟ Анализ ответа сформирован.")
     return state
@@ -156,10 +172,10 @@ def instructor_agent(state: AgentState) -> AgentState:
 def analyst_node(state: AgentState) -> AgentState:
     """Узел Аналитика: определяет тему на основе данных из БД."""
     logger.info(f"📊 ANALYST: Анализ прогресса пользователя {state['user_id']}")
-    # В будущем здесь будет запрос к JSONB колонке stats
+
     user_id = state["user_id"]
-    # Используем await в асинхронной обертке или обычный вызов для прототипа
-    topic = asyncio.run(get_user_weakest_topic(user_id))
+    
+    topic = asyncio.run(get_user_weakest_topic(user_id, state.get("last_topic", "")))
     
     state["current_topic"] = topic
     logger.info(f"   ∟ Выбрана тема для тренировки: {topic}")
@@ -184,12 +200,34 @@ def examiner_node(state: AgentState) -> AgentState:
         IMPORTANT RULES:\n
         1. ADRESSING: You are talking to ONE student. Use 'ты' or 'вы' (singular). 
         NEVER say 'students', 'class', or 'дорогие ученики'.\n
+
+        2. SCRIPT & TRANSLITERATION (CRITICAL):
+        - Write ALL Sanskrit words (lemmas, terms) ONLY in Devanagari script (e.g., देव) and IAST transliteration (e.g., deva). 
+        - NEVER use plain English/Russian letters for Sanskrit sounds (e.g., DO NOT write 'shabda').
+        - Use ONLY the Sanskrit words (lemmas, forms) exactly as provided in the 'raw_data'.
+        - DO NOT attempt to transliterate or convert words into Devanagari or IAST yourself.
+        - DO NOT change the spelling, accents, or diacritics of the provided Sanskrit words.
+
+        3. NO ANSWERS IN PROMPT (STRICT BAN):
+        - DO NOT provide the correct forms or examples of declension/conjugation for the target word.
+        - DO NOT list the answers in numbered lists or any other format.
+        - Your goal is to ASK the question, not to answer it or show "how it should look".
         
-        2. Exercise context: {{raw_data}}
+        4. Exercise context: {{raw_data}}
         
-        3. Instructions:
-        - If it's conjugation: remind them about the 3x3 grid format. Important! the 3x3 grid format for verb conjugation only!
-        - If it's declension: remind them about Singular/Dual/Plural.
+        5. Task Presentation:
+        - If it's declension: Simply include the word, its GENDER (from raw_data), and the case. 
+        Example of tone: "Склоняй слово '...' (род: ...), падеж: ..."
+        - If it's conjugation: Simply state the verb and the tense/mood.
+        
+        6. Instructions for Student:
+        - For declension: Mention the order is Singular, Dual, Plural.
+        - For conjugation: Mention the 3x3 grid format. 
+        - For conjugation: PERIPHRASTIC FORMS (CRITICAL): Explicitly instruct the student that periphrastic perfect forms (ending in -ām) MUST be written as ONE word, without a space (e.g., 'īkṣāñcakre', NOT 'īkṣām cakre').
+        - INPUT FORMAT (CRITICAL): Tell them to enter words in ONE line, separated ONLY by spaces (e.g., devaḥ devau devāḥ). 
+            No commas, no numbers, or extra text in their answer—only the words themselves.
+        
+        7. STYLE:
         - Be encouraging but professional.""")
     ])
     

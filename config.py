@@ -6,7 +6,6 @@ from dotenv import load_dotenv
 load_dotenv()
 
 class Settings(BaseSettings):
-    # Настройки подтянутся автоматически из .env или переменных окружения
     
     # Бот
     BOT_TOKEN: str
@@ -16,12 +15,12 @@ class Settings(BaseSettings):
     OPENROUTER_URL: str = "https://openrouter.ai/api/v1"
     MODEL_NAME: str = "openai/gpt-4o-mini"
     
-    # БД (ставим дефолтные значения на время тестов)
-    DB_HOST: str = "localhost"
-    DB_PORT: int = 5432
-    DB_USER: str = "postgres"
-    DB_PASSWORD: str = "password"
-    DB_NAME: str = "sanskrit_db"
+    # БД 
+    DB_HOST: str 
+    DB_PORT: int 
+    DB_USER: str 
+    DB_PASSWORD: str 
+    DB_NAME: str 
 
     # Конфигурация Pydantic
     model_config = SettingsConfigDict(
