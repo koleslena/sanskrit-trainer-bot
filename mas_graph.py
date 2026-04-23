@@ -193,6 +193,7 @@ def examiner_node(state: AgentState) -> AgentState:
     
     # 2. Используем LLM, чтобы красиво оформить вопрос на языке пользователя
     target_lang = "Russian" if state["detected_language"] == "ru" else "English"
+    tone = "Склоняй слово '...' (род: ...), падеж: ..." if state["detected_language"] == "ru" else "Decline the word '...' (gender: ...), case: ..."
     
     prompt = ChatPromptTemplate.from_messages([
         ("system", f"""You are a Sanskrit Teacher. Your task is to present a grammar exercise.
@@ -217,8 +218,8 @@ def examiner_node(state: AgentState) -> AgentState:
         
         5. Task Presentation:
         - If it's declension: Simply include the word, its GENDER (from raw_data), and the case. 
-        Example of tone: "Склоняй слово '...' (род: ...), падеж: ..."
-        - If it's conjugation: Simply state the verb and the tense/mood.
+        Example of tone: {tone}
+        - If it's conjugation: Simply state the verb, the tense/mood and gana.
         
         6. Instructions for Student:
         - For declension: Mention the order is Singular, Dual, Plural.

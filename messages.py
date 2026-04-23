@@ -43,6 +43,6 @@ MESSAGES = {
         "unknown": "I didn't quite get that. Type /test to practice or /help for instructions.",
         "start_test_first": "Please start a test first using /test.",
         "task_declension": "Declension of the word '{lemma}' ({category}), case: {case}, all 3 numbers.",
-        "task_conjugation": "Conjugation of the verb '{lemma}' ({category}), tense: {tense}, 3 persons by 3 numbers.",
+        "task_conjugation": "Conjugation of the verb '{lemma}', gana: {category}, tense: {tense}, 3 persons by 3 numbers.",
     }
 }
