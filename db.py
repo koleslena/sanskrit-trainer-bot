@@ -70,29 +70,42 @@ async def get_user_weakest_topic(user_id: int, last_topic: str) -> str:
             else:
                 # Случай Б: Данных нет или тем < 5 — выбираем новую случайную тему
                 # Объединяем имена из обеих таблиц и исключаем те, что уже есть в scores и passed
-                known_topics = list(scores.keys()) + list(passed)
+                passed_and_current_topics = tuple(list(scores.keys()) + passed,)
                 
                 query = """
+                    WITH random_subanta AS (
+                        SELECT name FROM subanta 
+                        WHERE name NOT IN %s 
+                        ORDER BY RANDOM() 
+                        LIMIT 10
+                    ),
+                    random_tinanta AS (
+                        SELECT name FROM tinanta 
+                        WHERE name NOT IN %s 
+                        ORDER BY RANDOM() 
+                        LIMIT 10
+                    )
                     SELECT name FROM (
-                        SELECT name FROM subanta
+                        SELECT name FROM random_subanta
                         UNION ALL
-                        SELECT name FROM tinanta
-                    ) as all_topics
-                    WHERE name NOT IN %s
+                        SELECT name FROM random_tinanta
+                    ) AS candidates
                     ORDER BY RANDOM()
                     LIMIT 1;
                 """
                 
                 # Если список пуст, передаем кортеж с пустой строкой для корректности SQL
-                params = (tuple(known_topics),) if known_topics else (('',),)
-                cur.execute(query, params)
+                if not passed_and_current_topics:
+                    passed_and_current_topics = ('',)
+
+                cur.execute(query, (passed_and_current_topics, passed_and_current_topics))
                 new_topic_row = cur.fetchone()
 
                 if new_topic_row:
                     return new_topic_row['name']
                 else:
                     # Если вдруг все темы мира уже изучены (маловероятно)
-                    return random.choice(known_topics) if known_topics else None
+                    return random.choice(passed_and_current_topics) if passed_and_current_topics else None
 
     except Exception as e:
         logger.error(f"❌ Ошибка при выборе темы: {e}")
