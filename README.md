@@ -39,7 +39,7 @@
 ### 1. Клонирование репозитория
 
 ```bash
-git clone [https://github.com/koleslena/sanskrit-trainer-bot.git](https://github.com/koleslena/sanskrit-trainer-bot.git)
+git clone https://github.com/koleslena/sanskrit-trainer-bot.git
 cd sanskrit-trainer-bot
 ```
 
