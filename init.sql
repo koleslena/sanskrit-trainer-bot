@@ -27,6 +27,7 @@ CREATE TABLE IF NOT EXISTS zabda (
 CREATE TABLE IF NOT EXISTS dhatu (
     id SERIAL PRIMARY KEY,
     word VARCHAR(255) NOT NULL, -- сам корень (например, 'bhū', 'gam')
+    tin VARCHAR(255) NOT NULL,
     tins JSONB NOT NULL,        -- готовые парадигмы (сетки 3x3) для разных лакаров
     gana INTEGER CHECK (gana >= 1 AND gana <= 10), -- класс глагола
     pada CHAR(1) CHECK (pada IN ('P', 'A', 'U'))  -- Parasmaipada, Atmanepada, Ubhayapada 
