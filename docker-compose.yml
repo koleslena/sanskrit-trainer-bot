@@ -8,13 +8,18 @@ services:
       - .env
     environment:
       - PYTHONUNBUFFERED=1
-    tty: true
-    stdin_open: true
+    tty: false
+    stdin_open: false
     depends_on:
       db:
         condition: service_healthy
     networks:
       - bot_network
+    deploy:
+      resources:
+        limits:
+          cpus: '0.50' 
+          memory: 512M
 
   # База данных PostgreSQL
   db:
@@ -24,21 +29,26 @@ services:
     env_file:
       - .env
     environment:
-      POSTGRES_USER: ${DB_USER:-postgres}
-      POSTGRES_PASSWORD: ${DB_PASSWORD:-password}
-      POSTGRES_DB: ${DB_NAME:-sanskrit_tutor}
+      POSTGRES_USER: ${DB_USER}
+      POSTGRES_PASSWORD: ${DB_PASSWORD}
+      POSTGRES_DB: ${DB_NAME}
     ports:
       - "127.0.0.1:5433:5432"
     volumes:
       - postgres_data:/var/lib/postgresql/data
-      - ./init.sql:/docker-entrypoint-initdb.d/init.sql
+      - ./init.sql:/docker-entrypoint-initdb.d/init.sql:ro
     healthcheck:
-      test: ["CMD-SHELL", "pg_isready -U ${DB_USER:-postgres} -d ${DB_NAME:-sanskrit_tutor}"]
-      interval: 5s
+      test: ["CMD-SHELL", "pg_isready -U ${DB_USER} -d ${DB_NAME}"]
+      interval: 10s
       timeout: 5s
       retries: 5
     networks:
       - bot_network
+    deploy:
+      resources:
+        limits:
+          cpus: '0.50'
+          memory: 512M
 
 networks:
   bot_network:
