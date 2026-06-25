@@ -99,3 +99,5 @@ he deva he devau he devāḥ
 īkṣāñcakre īkṣāñcakrāte īkṣāñcakrire īkṣāñcakṛṣe īkṣāñcakrāthe īkṣāñcakṛḍhve īkṣāñcakre īkṣāñcakṛvahe īkṣāñcakṛmahe
 ```
 
+## 📚 Данные взяты из проекта [ashtadhyayi](https://github.com/ashtadhyayi-com/data)
+
